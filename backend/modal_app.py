@@ -1,11 +1,10 @@
-from fastapi import FastAPI
-from modal import App, asgi_app
+import modal
 
-from main import app as fastapi_app_instance
+stub = modal.Stub("aadee-backend")
+image = modal.Image.debian_slim().pip_install_from_requirements("requirements.txt")
 
-app = App("aadee-backend")
-
-@app.function()
-@asgi_app()
+@stub.function(image=image, keep_warm=1, mounts=[modal.Mount.from_local_dir(".", remote_path="/app")])
+@modal.asgi_app()
 def fastapi_app():
-    return fastapi_app_instance
+    import main  # This loads the FastAPI app in main.py
+    return main.app
