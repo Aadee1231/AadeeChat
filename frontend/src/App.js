@@ -1,19 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
+import axios from 'axios';
 
 function App() {
-  const [message, setMessage] = useState("");
+  const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_API_URL}/`)
-      .then((res) => res.json())
-      .then((data) => setMessage(data.message))
-      .catch((err) => {
-        console.error("Backend error:", err);
-        setMessage("Failed to load from backend.");
-      });
+    axios.get(`${process.env.REACT_APP_API_BASE_URL}/ping`)
+      .then(res => setMsg(res.data.message))
+      .catch(err => console.error(err));
   }, []);
 
-  return <h1>{message || "Loading..."}</h1>;
+  return (
+    <div>
+      <h1>Backend says: {msg}</h1>
+    </div>
+  );
 }
 
 export default App;
