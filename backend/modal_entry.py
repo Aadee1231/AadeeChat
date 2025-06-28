@@ -16,7 +16,7 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
-@fastapi_app.get("/")
+@fastapi_app.get("/ping")
 def ping():
     return {"message": "pong from modal"}
 
