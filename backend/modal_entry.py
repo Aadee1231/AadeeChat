@@ -10,7 +10,7 @@ fastapi_app = FastAPI()
 
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://aadee-chat.vercel.app"],  
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,5 +23,5 @@ def ping():
 @app.function(image=image)
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
-def fastapi_app():
+def servefastapi_app():
     return fastapi_app
