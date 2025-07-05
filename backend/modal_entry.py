@@ -21,6 +21,7 @@ def ping():
     return {"message": "pong from modal"}
 
 @app.function(image=image)
-@modal.fastapi_endpoint()
-def serve():
+@modal.concurrent(max_inputs=100)
+@modal.asgi_app()
+def fastapi_app():
     return fastapi_app
