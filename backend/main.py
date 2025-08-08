@@ -103,7 +103,7 @@ def ping():
 @FastAPIapp.post("/chat")
 async def chat(request: Request):
     data = await request.json()
-    user_message = (data.get("message") or "").trim() if hasattr(str, "trim") else (data.get("message") or "").strip()
+    user_message = (data.get("message") or "").strip()
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 

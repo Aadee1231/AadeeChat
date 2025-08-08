@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import "./App.css";
 
+// Default to localhost if env is missing
+const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 export default function App() {
   const [chats, setChats] = useState([]);
