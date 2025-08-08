@@ -91,7 +91,7 @@ async def chat(request: Request):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5",
         messages=[
             cast(ChatCompletionMessageParam, {"role": "system", "content": "You are a helpful assistant."}),
             cast(ChatCompletionMessageParam, {"role": "user", "content": user_message}),
