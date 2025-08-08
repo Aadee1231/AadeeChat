@@ -3,3 +3,4 @@ uvicorn
 modal
 python-dotenv
 openAI
+supabase

@@ -1,17 +1,153 @@
-.chat-container {
-  max-width: 600px;
-  margin: 0 auto;
+/* Layout */
+/* Prevent whole page from scrolling */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden; /* lock the page scroll */
+}
+
+.app-wrap {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
   font-family: Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  border-right: 1px solid #e5e5e5;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.sidebar-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.sidebar-header button {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.chat-list {
+  overflow-y: auto;
+}
+
+.chat-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f2f2f2;
+  cursor: pointer;
+}
+
+.chat-item.active {
+  background: #f7f9ff;
+}
+
+.chat-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-updated {
+  font-size: 12px;
+  color: #666;
+}
+
+/* Make each chat row layout horizontally */
+.chat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Keep title + timestamp together, let them take the width */
+.chat-title {
+  flex: 1;
+}
+
+/* Small, unobtrusive icon button */
+.icon-btn {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+}
+
+.icon-btn:hover {
+  opacity: 0.8;
+}
+
+/* Main */
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  overflow: hidden;
 }
 
 .messages {
   border: 1px solid #ddd;
+  border-radius: 10px;
   padding: 1rem;
-  height: 400px;
+  flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  overflow: hidden;
+}
+
+/* Ensure messages can scroll */
+.messages {
+  overflow-y: auto;
+}
+
+/* Make each chat row horizontal so the trash icon sits on the right */
+.chat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-title {
+  flex: 1;
+}
+
+/* Tiny icon button */
+.icon-btn {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+}
+
+.icon-btn:hover {
+  opacity: 0.8;
+}
+
+
+.placeholder {
+  color: #888;
+  text-align: center;
+  margin-top: 2rem;
 }
 
 .bubble {
@@ -26,7 +162,7 @@
   align-self: flex-end;
 }
 
-.bubble.assistant {
+.bubble.assistant, .bubble.system {
   background: #f1f0f0;
   align-self: flex-start;
 }
