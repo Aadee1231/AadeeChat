@@ -2,45 +2,81 @@
 import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import "./App.css";
+import { supabase } from "./supabase";
+import AuthScreen from "./AuthScreen";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+// set baseURL once; auth header added after login
+axios.defaults.baseURL = process.env.REACT_APP_API_URL;
 
 export default function App() {
+  const [session, setSession] = useState(null);
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
 
-// autoscroll ref
-    const messagesRef = useRef(null);
-
-    const scrollMessagesToBottom = () => {
+  // autoscroll
+  const messagesRef = useRef(null);
+  const scrollMessagesToBottom = () => {
     if (messagesRef.current) {
-        messagesRef.current.scrollTo({
+      messagesRef.current.scrollTo({
         top: messagesRef.current.scrollHeight,
-        behavior: "smooth"
-        });
+        behavior: "smooth",
+      });
     }
-    };
-
-    useEffect(() => {
-    scrollMessagesToBottom();
-    }, [messages]);
-
-  // Load chats on start
+  };
   useEffect(() => {
-    fetchChats().catch(console.error);
+    scrollMessagesToBottom();
+  }, [messages]);
+
+  // Auth bootstrap + header wiring
+  useEffect(() => {
+    let unsub = null;
+
+    // initial session
+    supabase.auth.getSession().then(({ data }) => {
+      const s = data.session || null;
+      setSession(s);
+      if (s?.access_token) {
+        axios.defaults.headers.common["Authorization"] = `Bearer ${s.access_token}`;
+        fetchChats().catch(console.error);
+      }
+    });
+
+    // listen for changes (login/logout/refresh)
+    const sub = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      if (s?.access_token) {
+        axios.defaults.headers.common["Authorization"] = `Bearer ${s.access_token}`;
+        fetchChats().catch(console.error);
+      } else {
+        delete axios.defaults.headers.common["Authorization"];
+        // clear UI on sign out
+        setChats([]);
+        setActiveChatId(null);
+        setMessages([]);
+      }
+    });
+
+    unsub = sub?.data?.subscription;
+    return () => unsub?.unsubscribe();
   }, []);
 
+  // Fetch chats (requires auth)
   async function fetchChats() {
-    const res = await axios.get(`${process.env.REACT_APP_API_URL}/chats`);
-    setChats(res.data || []);
-    if (!activeChatId && res.data?.length) {
-      await selectChat(res.data[0].id);
+    const res = await axios.get("/chats");
+    const list = res.data || [];
+    setChats(list);
+    if (!activeChatId && list.length) {
+      await selectChat(list[0].id);
     }
   }
 
   async function selectChat(chatId) {
     setActiveChatId(chatId);
-    const res = await axios.get(`${process.env.REACT_APP_API_URL}/chats/${chatId}/messages`);
+    const res = await axios.get(`/chats/${chatId}/messages`);
     setMessages(res.data || []);
   }
 
@@ -48,10 +84,9 @@ export default function App() {
     const ok = window.confirm("Delete this chat? This can't be undone.");
     if (!ok) return;
 
-    await axios.delete(`${process.env.REACT_APP_API_URL}/chats/${chatId}`);
-
-    setChats(prev => {
-      const next = prev.filter(c => c.id !== chatId);
+    await axios.delete(`/chats/${chatId}`);
+    setChats((prev) => {
+      const next = prev.filter((c) => c.id !== chatId);
       if (activeChatId === chatId) {
         if (next.length) {
           const nextId = next[0].id;
@@ -67,12 +102,11 @@ export default function App() {
   }
 
   async function createNewChat() {
-    const res = await axios.post(`${process.env.REACT_APP_API_URL}/chats`, {
-    });
+    const res = await axios.post("/chats", {});
     const chat = res.data;
     setChats((prev) => [chat, ...prev]);
     await selectChat(chat.id);
-    return chat; // so handleSend can use it immediately
+    return chat;
   }
 
   async function handleSend(e) {
@@ -86,19 +120,25 @@ export default function App() {
       chatId = newChat.id;
     }
 
-    // optimistic UI for user message
+    // optimistic user bubble
     setMessages((prev) => [...prev, { chat_id: chatId, role: "user", content: trimmed }]);
     setInput("");
 
     try {
-      const res = await axios.post(`${process.env.REACT_APP_API_URL}/chats/${chatId}/messages`, { message: trimmed });
+      const res = await axios.post(`/chats/${chatId}/messages`, { message: trimmed });
       const botReply = res.data.response || "";
       setMessages((prev) => [...prev, { chat_id: chatId, role: "assistant", content: botReply }]);
-      fetchChats().catch(() => {}); // refresh sidebar timestamps
+      // refresh chat list timestamps
+      fetchChats().catch(() => {});
     } catch (err) {
       console.error("API ERROR:", err.response?.data || err.message);
       setMessages((prev) => [...prev, { role: "assistant", content: "Oops! Something went wrong." }]);
     }
+  }
+
+  // 🚪 Gate the UI behind auth
+  if (!session) {
+    return <AuthScreen />;
   }
 
   return (
@@ -106,7 +146,10 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <h2>AadeeChat</h2>
-          <button onClick={createNewChat}>+ New Chat</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={createNewChat}>+ New Chat</button>
+            <button onClick={() => supabase.auth.signOut()}>Sign out</button>
+          </div>
         </div>
 
         <div className="chat-list">
@@ -119,9 +162,10 @@ export default function App() {
             >
               <div className="chat-title">{c.title}</div>
               <div className="chat-updated">
-                {c.updated_at ? new Date(c.updated_at).toLocaleDateString() : ""}
-                {" "}
-                {c.updated_at ? new Date(c.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""}
+                {c.updated_at ? new Date(c.updated_at).toLocaleDateString() : ""}{" "}
+                {c.updated_at
+                  ? new Date(c.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                  : ""}
               </div>
 
               <button
@@ -144,24 +188,21 @@ export default function App() {
       <main className="chat-main">
         <div className="messages" ref={messagesRef}>
           {messages
-            .filter(m => m.role !== "system")
+            .filter((m) => m.role !== "system")
             .map((m, idx) => (
-                <div
-                key={idx}
-                className={`bubble ${m.role === "user" ? "user" : (m.role || "assistant")}`}
-                >
-                {m.content}
-                </div>
+              <div key={idx} className={`bubble ${m.role === "user" ? "user" : (m.role || "assistant")}`}>
+                {m.role === "assistant" ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content || ""}</ReactMarkdown>
+                ) : (
+                  m.content
+                )}
+              </div>
             ))}
-            {!messages.length && <div className="placeholder">Say hi to start the conversation.</div>}
+          {!messages.length && <div className="placeholder">Say hi to start the conversation.</div>}
         </div>
 
         <form onSubmit={handleSend} className="input-form">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message…"
-          />
+          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type your message…" />
           <button type="submit">Send</button>
         </form>
       </main>

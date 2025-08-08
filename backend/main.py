@@ -1,13 +1,14 @@
 # main.py
 import os
 from typing import Any, Dict, List, Literal, cast
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from openai import OpenAI
 from supabase import create_client, Client
 import modal
+import httpx
 
 load_dotenv()
 
@@ -21,6 +22,10 @@ if not OPENAI_API_KEY:
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
 
+# Coerce to str so type-checkers are happy for headers/URLs
+SUPABASE_URL = cast(str, SUPABASE_URL)
+SUPABASE_SERVICE_ROLE_KEY = cast(str, SUPABASE_SERVICE_ROLE_KEY)
+
 # --- Clients
 client = OpenAI()  # uses OPENAI_API_KEY
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -29,7 +34,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 FastAPIapp = FastAPI()
 FastAPIapp.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten later
+    allow_origins=["*"],  # tighten later if you want
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,10 +42,38 @@ FastAPIapp.add_middleware(
 
 Role = Literal["system", "user", "assistant"]
 
+# ========= Auth helper (verify Supabase JWT) =========
+async def get_current_user(request: Request) -> Dict[str, Any]:
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Bearer token")
+    token: str = auth_header.split(" ", 1)[1]  # explicitly str
+
+    # Force a non-Optional str for type checker
+    apikey: str = cast(str, SUPABASE_SERVICE_ROLE_KEY)
+
+    headers: Dict[str, str] = {
+        "Authorization": f"Bearer {token}",
+        "apikey": apikey,
+    }
+
+    async with httpx.AsyncClient(timeout=10) as x:
+        r = await x.get(f"{SUPABASE_URL}/auth/v1/user", headers=headers)
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid auth token")
+    return r.json()
+
 # ========= DB helpers =========
 
-def _get_chat_or_404(chat_id: str) -> Dict[str, Any]:
-    res = supabase.table("chats").select("*").eq("id", chat_id).limit(1).execute()
+def _get_chat_or_404_owned(chat_id: str, user_id: str) -> Dict[str, Any]:
+    res = (
+        supabase.table("chats")
+        .select("*")
+        .eq("id", chat_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
     if not res.data:
         raise HTTPException(status_code=404, detail="Chat not found")
     return cast(Dict[str, Any], res.data[0])
@@ -114,34 +147,33 @@ def _history_to_input(history: List[Dict[str, Any]]) -> str:
 def ping():
     return {"message": "pong"}
 
-# --- One-off chat (no DB) — Web Search ALWAYS ON
+# Optional health check to confirm deployment & config
+@FastAPIapp.get("/__health")
+def __health():
+    return {"engine": "responses+web_search", "web_search": "always_on"}
+
+# --- One-off chat (no DB) — Web Search ALWAYS ON (left open)
 @FastAPIapp.post("/chat")
 async def chat(request: Request):
-    """
-    Usage: POST /chat { "message": "..." }
-    Returns: { response: "..." }
-    """
     data = await request.json()
     user_message = (data.get("message") or "").strip()
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    tools_param = cast(Any, [{"type": "web_search"}])  # satisfy type checker
+    tools_param = cast(Any, [{"type": "web_search"}])  # built-in web search
 
     r = client.responses.create(
         model="gpt-4o",
         instructions=DEFAULT_PERSONA,
         tools=tools_param,
         input=user_message,
-        # temperature=0.3,
-        # max_output_tokens=900,
     )
     reply = r.output_text
     return {"response": reply}
 
-# --- Create chat with initial persona + greeting
+# --- Create chat (PRIVATE: ties chat to user_id)
 @FastAPIapp.post("/chats")
-async def create_chat(request: Request):
+async def create_chat(request: Request, user=Depends(get_current_user)):
     data = await request.json()
     title: str = (data.get("title") or "New Chat").strip() or "New Chat"
 
@@ -154,14 +186,15 @@ async def create_chat(request: Request):
     ).strip()
     greeting = (data.get("greeting") or "Hello! How can I assist you today?").strip()
 
-    chat_res = supabase.table("chats").insert({"title": title}).execute()
+    chat_res = supabase.table("chats").insert({
+        "title": title,
+        "user_id": user["id"],   # <-- OWNERSHIP
+    }).execute()
     if not chat_res.data:
         raise HTTPException(status_code=500, detail="Failed to create chat")
     chat = cast(Dict[str, Any], chat_res.data[0])
 
-    # 1) store persona as hidden context (system)
     _insert_message(chat["id"], "system", persona)
-    # 2) store a visible greeting (assistant bubble)
     _insert_message(chat["id"], "assistant", greeting)
 
     return {
@@ -171,35 +204,36 @@ async def create_chat(request: Request):
         "updated_at": chat.get("updated_at"),
     }
 
-# --- Delete chats
+# --- Delete chat (PRIVATE)
 @FastAPIapp.delete("/chats/{chat_id}")
-async def delete_chat(chat_id: str):
-    _get_chat_or_404(chat_id)
+async def delete_chat(chat_id: str, user=Depends(get_current_user)):
+    _get_chat_or_404_owned(chat_id, user["id"])
     supabase.table("chats").delete().eq("id", chat_id).execute()
     return {"message": f"Chat {chat_id} deleted successfully"}
 
-# --- List chats (newest first)
+# --- List chats (PRIVATE)
 @FastAPIapp.get("/chats")
-async def list_chats():
+async def list_chats(user=Depends(get_current_user)):
     res = (
         supabase.table("chats")
         .select("id,title,created_at,updated_at")
+        .eq("user_id", user["id"])  # <-- ONLY my chats
         .order("updated_at", desc=True)
         .execute()
     )
     return res.data or []
 
-# --- Get messages for a chat
+# --- Get messages for a chat (PRIVATE)
 @FastAPIapp.get("/chats/{chat_id}/messages")
-async def get_messages(chat_id: str):
-    _get_chat_or_404(chat_id)
+async def get_messages(chat_id: str, user=Depends(get_current_user)):
+    _get_chat_or_404_owned(chat_id, user["id"])
     msgs = _list_messages(chat_id, limit=200)
     return msgs
 
-# --- Send a message with full context — Web Search ALWAYS ON
+# --- Send a message with full context (PRIVATE) — Web Search ALWAYS ON
 @FastAPIapp.post("/chats/{chat_id}/messages")
-async def send_message(chat_id: str, request: Request):
-    _get_chat_or_404(chat_id)
+async def send_message(chat_id: str, request: Request, user=Depends(get_current_user)):
+    _get_chat_or_404_owned(chat_id, user["id"])
 
     data = await request.json()
     user_message = (data.get("message") or "").strip()
@@ -216,7 +250,7 @@ async def send_message(chat_id: str, request: Request):
     instructions = _extract_persona_from_history(history)
     transcript = _history_to_input(history)
 
-    tools_param = cast(Any, [{"type": "web_search"}])  # satisfy type checker
+    tools_param = cast(Any, [{"type": "web_search"}])  # built-in web search
 
     # 4) call Responses API
     r = client.responses.create(
@@ -224,8 +258,6 @@ async def send_message(chat_id: str, request: Request):
         instructions=instructions,
         tools=tools_param,
         input=transcript,
-        # temperature=0.3,
-        # max_output_tokens=1200,
     )
     assistant_reply: str = r.output_text or ""
 
@@ -242,7 +274,7 @@ async def send_message(chat_id: str, request: Request):
 app = modal.App("aadee-chat-backend")
 image = modal.Image.debian_slim().pip_install_from_requirements("requirements.txt")
 
-# NOTE: change this secret name if yours differs.
+# If your frontend points to ...-serve.modal.run, rename this to `serve`
 @app.function(image=image, secrets=[modal.Secret.from_name("openai-secrets")])
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
