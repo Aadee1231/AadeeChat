@@ -201,7 +201,7 @@ async def send_message(chat_id: str, request: Request):
 app = modal.App("aadee-chat-backend")
 image = modal.Image.debian_slim().pip_install_from_requirements("requirements.txt")
 
-@app.function(image=image, secrets=[modal.Secret.from_name("openai-secretes")])
+@app.function(image=image, secrets=[modal.Secret.from_name("openai-secrets")])
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def servefastapi_app(): 
