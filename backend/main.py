@@ -1,19 +1,17 @@
 # main.py
 import os
-from typing import Any, Dict, List, Optional, Literal, cast
+from typing import Any, Dict, List, Literal, cast
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from openai import OpenAI
-from openai.types.chat import ChatCompletionMessageParam
-
 from supabase import create_client, Client
-
 import modal
 
 load_dotenv()
 
+# --- Env
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -23,21 +21,23 @@ if not OPENAI_API_KEY:
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
 
-client = OpenAI()
-
+# --- Clients
+client = OpenAI()  # uses OPENAI_API_KEY
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+# --- FastAPI
 FastAPIapp = FastAPI()
-
 FastAPIapp.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],  # tighten later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 Role = Literal["system", "user", "assistant"]
+
+# ========= DB helpers =========
 
 def _get_chat_or_404(chat_id: str) -> Dict[str, Any]:
     res = supabase.table("chats").select("*").eq("id", chat_id).limit(1).execute()
@@ -77,29 +77,69 @@ def _maybe_set_title_from_first_user(chat_id: str) -> None:
     title = (title_src[:40] + "…") if len(title_src) > 40 else (title_src or "New Chat")
     supabase.table("chats").update({"title": title}).eq("id", chat_id).execute()
 
+# ========= Responses API helpers =========
+
+DEFAULT_PERSONA = (
+    "You are AadeeChat, built by Aadee Inc. Be concrete, practical, and friendly. "
+    "Skip canned disclaimers. Use step-by-step plans and small code blocks when helpful. "
+    "If you used web search, include short inline source links."
+)
+
+def _extract_persona_from_history(history: List[Dict[str, Any]]) -> str:
+    """Use the first system message as 'instructions' if present, else fallback."""
+    for m in history:
+        if m.get("role") == "system":
+            return str(m.get("content") or "").strip() or DEFAULT_PERSONA
+    return DEFAULT_PERSONA
+
+def _history_to_input(history: List[Dict[str, Any]]) -> str:
+    """
+    Flatten stored chat history to a single prompt string for the Responses API.
+    Order is already chronological.
+    """
+    lines: List[str] = []
+    for m in history:
+        role = str(m.get("role"))
+        content = str(m.get("content") or "")
+        if role == "system":
+            # System content becomes 'instructions' separately, so skip in the transcript.
+            continue
+        tag = "User" if role == "user" else "Assistant"
+        lines.append(f"{tag}: {content}")
+    return "\n\n".join(lines).strip()
+
+# ========= Routes =========
 
 @FastAPIapp.get("/")
 def ping():
     return {"message": "pong"}
 
-# --- One-off chat (kept for convenience)
+# --- One-off chat (no DB) — Web Search ALWAYS ON
 @FastAPIapp.post("/chat")
 async def chat(request: Request):
+    """
+    Usage: POST /chat { "message": "..." }
+    Returns: { response: "..." }
+    """
     data = await request.json()
     user_message = (data.get("message") or "").strip()
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    completion = client.chat.completions.create(
-        model="gpt-5",
-        messages=[
-            cast(ChatCompletionMessageParam, {"role": "system", "content": "You are a helpful assistant."}),
-            cast(ChatCompletionMessageParam, {"role": "user", "content": user_message}),
-        ]
+    tools_param = cast(Any, [{"type": "web_search"}])  # satisfy type checker
+
+    r = client.responses.create(
+        model="gpt-4o",
+        instructions=DEFAULT_PERSONA,
+        tools=tools_param,
+        input=user_message,
+        # temperature=0.3,
+        # max_output_tokens=900,
     )
-    reply = completion.choices[0].message.content or ""
+    reply = r.output_text
     return {"response": reply}
 
+# --- Create chat with initial persona + greeting
 @FastAPIapp.post("/chats")
 async def create_chat(request: Request):
     data = await request.json()
@@ -107,23 +147,20 @@ async def create_chat(request: Request):
 
     # Brand persona (system) + a separate greeting (assistant)
     persona = (
-        "You are AadeeChat, an AI assistant created by Aadee Inc. "
-        "When asked about your identity or creator, say you are AadeeChat by Aadee Inc. "
-        "Be concise, professional, and friendly."
-    )
+        data.get("system_prompt")
+        or "You are AadeeChat, an AI assistant created by Aadee Inc. "
+           "When asked about your identity or creator, say you are AadeeChat by Aadee Inc. "
+           "Be concise, professional, and friendly."
+    ).strip()
     greeting = (data.get("greeting") or "Hello! How can I assist you today?").strip()
 
-    # allow optional override of persona from client, else use ours
-    system_prompt: str = (data.get("system_prompt") or persona).strip()
-
-    # create chat
     chat_res = supabase.table("chats").insert({"title": title}).execute()
     if not chat_res.data:
         raise HTTPException(status_code=500, detail="Failed to create chat")
     chat = cast(Dict[str, Any], chat_res.data[0])
 
     # 1) store persona as hidden context (system)
-    _insert_message(chat["id"], "system", system_prompt)
+    _insert_message(chat["id"], "system", persona)
     # 2) store a visible greeting (assistant bubble)
     _insert_message(chat["id"], "assistant", greeting)
 
@@ -134,14 +171,12 @@ async def create_chat(request: Request):
         "updated_at": chat.get("updated_at"),
     }
 
-
 # --- Delete chats
 @FastAPIapp.delete("/chats/{chat_id}")
 async def delete_chat(chat_id: str):
     _get_chat_or_404(chat_id)
     supabase.table("chats").delete().eq("id", chat_id).execute()
     return {"message": f"Chat {chat_id} deleted successfully"}
-
 
 # --- List chats (newest first)
 @FastAPIapp.get("/chats")
@@ -161,7 +196,7 @@ async def get_messages(chat_id: str):
     msgs = _list_messages(chat_id, limit=200)
     return msgs
 
-# --- Send a message with full context
+# --- Send a message with full context — Web Search ALWAYS ON
 @FastAPIapp.post("/chats/{chat_id}/messages")
 async def send_message(chat_id: str, request: Request):
     _get_chat_or_404(chat_id)
@@ -174,36 +209,42 @@ async def send_message(chat_id: str, request: Request):
     # 1) store user message
     _insert_message(chat_id, "user", user_message)
 
-    # 2) fetch history and coerce to typed messages for OpenAI
+    # 2) fetch history
     history = _list_messages(chat_id, limit=200)
 
-    typed_messages: List[ChatCompletionMessageParam] = []
-    for m in history:
-        role = str(m.get("role") or "user")
-        content = str(m.get("content") or "")
-        typed_messages.append(cast(ChatCompletionMessageParam, {"role": role, "content": content}))
+    # 3) derive instructions + transcript
+    instructions = _extract_persona_from_history(history)
+    transcript = _history_to_input(history)
 
-    # 3) OpenAI with full history
-    completion = client.chat.completions.create(
+    tools_param = cast(Any, [{"type": "web_search"}])  # satisfy type checker
+
+    # 4) call Responses API
+    r = client.responses.create(
         model="gpt-4o",
-        messages=typed_messages
+        instructions=instructions,
+        tools=tools_param,
+        input=transcript,
+        # temperature=0.3,
+        # max_output_tokens=1200,
     )
-    assistant_reply: str = completion.choices[0].message.content or ""
+    assistant_reply: str = r.output_text or ""
 
-    # 4) store assistant reply
+    # 5) store assistant reply
     _insert_message(chat_id, "assistant", assistant_reply)
 
-    # 5) maybe auto-rename chat
+    # 6) maybe auto-rename chat
     _maybe_set_title_from_first_user(chat_id)
 
     return {"response": assistant_reply, "chat_id": chat_id}
 
+# ========= Modal serve =========
+
 app = modal.App("aadee-chat-backend")
 image = modal.Image.debian_slim().pip_install_from_requirements("requirements.txt")
 
+# NOTE: change this secret name if yours differs.
 @app.function(image=image, secrets=[modal.Secret.from_name("openai-secrets")])
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def servefastapi_app():
     return FastAPIapp
-
