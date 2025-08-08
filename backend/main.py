@@ -10,12 +10,8 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from supabase import create_client, Client
 
-# Optional: Modal deploy
 import modal
 
-# =========================
-# Env & clients
-# =========================
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -27,33 +23,22 @@ if not OPENAI_API_KEY:
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
 
-# OpenAI
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-# =========================
-# FastAPI app
-# =========================
 FastAPIapp = FastAPI(title="Aadee Chat Backend")
 
 FastAPIapp.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in prod
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# =========================
-# Types
-# =========================
 Role = Literal["system", "user", "assistant"]
 
-# =========================
-# DB helpers
-# =========================
 def _get_chat_or_404(chat_id: str) -> Dict[str, Any]:
     res = supabase.table("chats").select("*").eq("id", chat_id).limit(1).execute()
     if not res.data:
@@ -92,14 +77,11 @@ def _maybe_set_title_from_first_user(chat_id: str) -> None:
     title = (title_src[:40] + "…") if len(title_src) > 40 else (title_src or "New Chat")
     supabase.table("chats").update({"title": title}).eq("id", chat_id).execute()
 
-# =========================
-# Routes
-# =========================
+
 @FastAPIapp.get("/")
 def ping():
     return {"message": "pong"}
 
-# --- One-off chat (kept for convenience)
 @FastAPIapp.post("/chat")
 async def chat(request: Request):
     data = await request.json()
@@ -215,11 +197,6 @@ async def send_message(chat_id: str, request: Request):
 
     return {"response": assistant_reply, "chat_id": chat_id}
 
-# =========================
-# Modal deployment (optional)
-# Make sure the secret contains:
-# OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-# =========================
 app = modal.App("aadee-chat-backend")
 image = modal.Image.debian_slim().pip_install_from_requirements("requirements.txt")
 
