@@ -82,6 +82,7 @@ def _maybe_set_title_from_first_user(chat_id: str) -> None:
 def ping():
     return {"message": "pong"}
 
+# --- One-off chat (kept for convenience)
 @FastAPIapp.post("/chat")
 async def chat(request: Request):
     data = await request.json()
@@ -200,7 +201,7 @@ async def send_message(chat_id: str, request: Request):
 app = modal.App("aadee-chat-backend")
 image = modal.Image.debian_slim().pip_install_from_requirements("requirements.txt")
 
-@app.function(image=image, secrets=[modal.Secret.from_name("openai-secrets")])
+@app.function(image=image, secrets=[modal.Secret.from_name("openai-secretes")])
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def servefastapi_app(): 

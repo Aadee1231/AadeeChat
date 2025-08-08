@@ -3,9 +3,6 @@ import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import "./App.css";
 
-// Default to localhost if env is missing
-const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
-
 export default function App() {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
@@ -34,7 +31,7 @@ export default function App() {
   }, []);
 
   async function fetchChats() {
-    const res = await axios.get(`${API}/chats`);
+    const res = await axios.get(`${process.env.REACT_APP_API_URL}/chats`);
     setChats(res.data || []);
     if (!activeChatId && res.data?.length) {
       await selectChat(res.data[0].id);
@@ -43,7 +40,7 @@ export default function App() {
 
   async function selectChat(chatId) {
     setActiveChatId(chatId);
-    const res = await axios.get(`${API}/chats/${chatId}/messages`);
+    const res = await axios.get(`${process.env.REACT_APP_API_URL}/chats/${chatId}/messages`);
     setMessages(res.data || []);
   }
 
@@ -51,7 +48,7 @@ export default function App() {
     const ok = window.confirm("Delete this chat? This can't be undone.");
     if (!ok) return;
 
-    await axios.delete(`${API}/chats/${chatId}`);
+    await axios.delete(`${process.env.REACT_APP_API_URL}/chats/${chatId}`);
 
     setChats(prev => {
       const next = prev.filter(c => c.id !== chatId);
@@ -70,7 +67,7 @@ export default function App() {
   }
 
   async function createNewChat() {
-    const res = await axios.post(`${API}/chats`, {
+    const res = await axios.post(`${process.env.REACT_APP_API_URL}/chats`, {
     });
     const chat = res.data;
     setChats((prev) => [chat, ...prev]);
@@ -94,7 +91,7 @@ export default function App() {
     setInput("");
 
     try {
-      const res = await axios.post(`${API}/chats/${chatId}/messages`, { message: trimmed });
+      const res = await axios.post(`${process.env.REACT_APP_API_URL}/chats/${chatId}/messages`, { message: trimmed });
       const botReply = res.data.response || "";
       setMessages((prev) => [...prev, { chat_id: chatId, role: "assistant", content: botReply }]);
       fetchChats().catch(() => {}); // refresh sidebar timestamps
