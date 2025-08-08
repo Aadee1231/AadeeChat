@@ -20,7 +20,12 @@ export default function AuthScreen() {
         if (error) throw error;
         setMsg("Signed in!");
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        // 👇 add emailRedirectTo so the confirm link returns to your current origin
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: window.location.origin },
+        });
         if (error) throw error;
         setMsg("Check your email to confirm your account.");
       }
@@ -34,7 +39,7 @@ export default function AuthScreen() {
   async function resetPassword() {
     if (!email) return setMsg("Enter your email first.");
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin, // change if you have a special reset page
+      redirectTo: window.location.origin, // returns here after reset
     });
     setMsg(error ? error.message : "Password reset email sent.");
   }
