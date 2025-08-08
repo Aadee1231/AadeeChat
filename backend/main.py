@@ -23,11 +23,11 @@ if not OPENAI_API_KEY:
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI()
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-FastAPIapp = FastAPI(title="Aadee Chat Backend")
+FastAPIapp = FastAPI()
 
 FastAPIapp.add_middleware(
     CORSMiddleware,
@@ -204,5 +204,6 @@ image = modal.Image.debian_slim().pip_install_from_requirements("requirements.tx
 @app.function(image=image, secrets=[modal.Secret.from_name("openai-secrets")])
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
-def servefastapi_app(): 
+def servefastapi_app():
     return FastAPIapp
+

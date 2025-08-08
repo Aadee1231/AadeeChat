@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-modal
 python-dotenv
-openAI
+openai
 supabase
