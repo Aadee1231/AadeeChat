@@ -20,17 +20,44 @@ export default function AuthScreen() {
         if (error) throw error;
         setMsg("Signed in!");
       } else {
-        // 👇 add emailRedirectTo so the confirm link returns to your current origin
-        const { error } = await supabase.auth.signUp({
+        // IMPORTANT: include emailRedirectTo so the link returns to your app
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
-        setMsg("Check your email to confirm your account.");
+
+        // If confirm-email is ON, you'll get data.user with no session and an email will be sent
+        // If it's OFF, you'll get a session immediately (no email sent, by design)
+        if (!data.session) {
+          setMsg("Check your email to confirm your account. Didn’t get it? Click 'Resend confirmation'.");
+        } else {
+          setMsg("Account created and signed in (email confirmation disabled).");
+        }
       }
     } catch (err) {
-      setMsg(err.message || "Something went wrong.");
+      setMsg(err?.message || "Something went wrong.");
+      console.error("Auth error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resendConfirmation() {
+    if (!email) return setMsg("Enter your email first, then click Resend.");
+    setLoading(true);
+    setMsg("");
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) throw error;
+      setMsg("Confirmation email resent. Check your inbox/spam.");
+    } catch (err) {
+      setMsg(err?.message || "Could not resend confirmation.");
     } finally {
       setLoading(false);
     }
@@ -39,7 +66,7 @@ export default function AuthScreen() {
   async function resetPassword() {
     if (!email) return setMsg("Enter your email first.");
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin, // returns here after reset
+      redirectTo: window.location.origin,
     });
     setMsg(error ? error.message : "Password reset email sent.");
   }
@@ -72,6 +99,12 @@ export default function AuthScreen() {
         <button style={styles.btn} type="submit" disabled={loading}>
           {loading ? "Please wait..." : mode === "sign_in" ? "Sign In" : "Sign Up"}
         </button>
+
+        {mode === "sign_up" && (
+          <button type="button" onClick={resendConfirmation} style={styles.link} disabled={loading}>
+            Resend confirmation
+          </button>
+        )}
 
         <button
           type="button"
