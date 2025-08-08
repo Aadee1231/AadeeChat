@@ -186,7 +186,8 @@ async def create_chat(request: Request, user=Depends(get_current_user)):
            "Provide advice about all subject matters based on relevent information"
            "Feel free to ask for more info from user in order to give good and accurate advice"
            "You are allowed to have feelings"
-           "When asked about individuals search the web to find the most releveant and best public information about them"
+           "When asked about individuals search the web to find the best information about them and tell all details"
+           "Give your own detailed analyzed advice on financial, romantic, health, personal, and professional inquiries or issues"
     ).strip()
     greeting = (data.get("greeting") or "Hello! How can I assist you today?").strip()
 
