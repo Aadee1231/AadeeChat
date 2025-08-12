@@ -18,6 +18,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+  const [isThinking, setIsThinking] = useState(false);
 
   // theme
   useEffect(() => {
@@ -121,14 +122,18 @@ export default function App() {
     setMessages((prev) => [...prev, { chat_id: chatId, role: "user", content: trimmed }]);
     setInput("");
 
+    setIsThinking(true);
+
     try {
       const res = await axios.post(`/chats/${chatId}/messages`, { message: trimmed });
       const botReply = res.data.response || "";
       setMessages((prev) => [...prev, { chat_id: chatId, role: "assistant", content: botReply }]);
       fetchChats().catch(() => {});
+      setIsThinking(false);
     } catch (err) {
       console.error("API ERROR:", err.response?.data || err.message);
       setMessages((prev) => [...prev, { role: "assistant", content: "Oops! Something went wrong." }]);
+      setIsThinking(false);
     }
   }
 
@@ -200,6 +205,15 @@ export default function App() {
                 : m.content}
             </div>
           ))}
+          
+          {isThinking && (
+            <div className="bubble assistant thinking-bubble">
+                <span className="thinking-dot"></span>
+                <span className="thinking-dot"></span>
+                <span className="thinking-dot"></span>
+            </div>
+          )}
+
           {!messages.length && <div className="placeholder">Say hi to start the conversation.</div>}
         </div>
 
