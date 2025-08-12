@@ -79,14 +79,22 @@ html[data-theme="light"] {
   min-width: 0;
 }
 .sidebar-header {
-  display:flex;
-  align-items:center;
-  gap:10px;
+  display: grid;
+  grid-template-columns: 1fr auto;  /* left = brand, right = actions */
+  align-items: center;
+  gap: 12px;
   padding: 14px 14px 10px 14px;
   border-bottom: 1px solid rgba(255,255,255,.06);
 }
 .sidebar-header .brand h2 { margin:0; font-size:18px; }
-.sidebar-actions { margin-left:auto; display:flex; gap:8px; align-items:center; }
+.sidebar-actions {
+  justify-self: end;          /* pin to the right edge of the header */
+  display: flex;
+  flex-direction: column;     /* stack New Chat over Sign out */
+  align-items: center;        /* center horizontally */
+  gap: 8px;
+  margin-left: 0;             /* remove the old auto push */
+}
 .sidebar-actions .close { display:none; }
 
 .chat-list {
@@ -209,18 +217,18 @@ html[data-theme="light"] {
   background: linear-gradient(90deg, var(--brand), var(--brand-2));
   border: none;
 }
+
 /* uniform pill buttons */
 .btn.pill {
   height: 38px;
   padding: 0 16px;
   border-radius: 999px;
-  min-width: 140px;         /* same width for both buttons */
+  min-width: 140px;
   display: flex;
   align-items: center;
   justify-content: center;
   white-space: nowrap;
 }
-
 
 /* blue highlight on hover/focus */
 .btn.primary:hover,

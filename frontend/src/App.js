@@ -156,7 +156,7 @@ export default function App() {
             <h2>AadeeChat</h2>
           </div>
          <div className="sidebar-actions">
-            <button className="btn primary pill" onClick={createNewChat}>＋ New Chat</button>
+            <button className="btn primary pill" onClick={createNewChat}>+ New Chat</button>
             <button className="btn primary pill" onClick={() => supabase.auth.signOut()}>Sign out</button>
             <button className="icon-btn ghost close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">✕</button>
          </div>
