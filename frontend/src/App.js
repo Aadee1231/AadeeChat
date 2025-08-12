@@ -10,6 +10,17 @@ import remarkGfm from "remark-gfm";
 // set baseURL once; auth header added after login
 axios.defaults.baseURL = process.env.REACT_APP_API_URL;
 
+axios.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err?.response?.status === 401) {
+      delete axios.defaults.headers.common["Authorization"];
+      supabase.auth.signOut(); // triggers your onAuthStateChange to reset UI
+    }
+    return Promise.reject(err);
+  }
+);
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [chats, setChats] = useState([]);
@@ -205,7 +216,7 @@ export default function App() {
                 : m.content}
             </div>
           ))}
-          
+
           {isThinking && (
             <div className="bubble assistant thinking-bubble">
                 <span className="thinking-dot"></span>
