@@ -214,13 +214,13 @@ html[data-theme="light"] {
   height: 38px;
   padding: 0 16px;
   border-radius: 999px;
-  min-width: 120px;       /* ensures equal width for New Chat & Sign out */
-  display: inline-flex;   /* centers text nicely */
+  min-width: 140px;         /* same width for both buttons */
+  display: flex;
   align-items: center;
   justify-content: center;
-  white-space: nowrap;    /* stops wrapping onto 2 lines */
-  gap: 6px;               /* space between icon/text if you add icons */
+  white-space: nowrap;
 }
+
 
 /* blue highlight on hover/focus */
 .btn.primary:hover,
@@ -257,7 +257,13 @@ html[data-theme="light"] {
     border-right: 1px solid rgba(255,255,255,.12);
   }
   .sidebar.open { translate: 0 0; }
-  .sidebar-actions .close { display:block; }
+  .sidebar-actions {
+    display: flex;
+    flex-direction: column;   /* stack vertically */
+    align-items: center;      /* center horizontally */
+    gap: 8px;                 /* space between buttons */
+  } 
+  .close { display:block; }
   .backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 30;
   }
