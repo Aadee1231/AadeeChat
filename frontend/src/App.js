@@ -16,26 +16,28 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+
+  // theme
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   // autoscroll
   const messagesRef = useRef(null);
   const scrollMessagesToBottom = () => {
     if (messagesRef.current) {
-      messagesRef.current.scrollTo({
-        top: messagesRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+      messagesRef.current.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" });
     }
   };
-  useEffect(() => {
-    scrollMessagesToBottom();
-  }, [messages]);
+  useEffect(() => { scrollMessagesToBottom(); }, [messages]);
 
   // Auth bootstrap + header wiring
   useEffect(() => {
     let unsub = null;
 
-    // initial session
     supabase.auth.getSession().then(({ data }) => {
       const s = data.session || null;
       setSession(s);
@@ -45,7 +47,6 @@ export default function App() {
       }
     });
 
-    // listen for changes (login/logout/refresh)
     const sub = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       if (s?.access_token) {
@@ -53,7 +54,6 @@ export default function App() {
         fetchChats().catch(console.error);
       } else {
         delete axios.defaults.headers.common["Authorization"];
-        // clear UI on sign out
         setChats([]);
         setActiveChatId(null);
         setMessages([]);
@@ -69,21 +69,19 @@ export default function App() {
     const res = await axios.get("/chats");
     const list = res.data || [];
     setChats(list);
-    if (!activeChatId && list.length) {
-      await selectChat(list[0].id);
-    }
+    if (!activeChatId && list.length) await selectChat(list[0].id);
   }
 
   async function selectChat(chatId) {
     setActiveChatId(chatId);
     const res = await axios.get(`/chats/${chatId}/messages`);
     setMessages(res.data || []);
+    setSidebarOpen(false); // close drawer on mobile
   }
 
   async function deleteChat(chatId) {
     const ok = window.confirm("Delete this chat? This can't be undone.");
     if (!ok) return;
-
     await axios.delete(`/chats/${chatId}`);
     setChats((prev) => {
       const next = prev.filter((c) => c.id !== chatId);
@@ -120,7 +118,6 @@ export default function App() {
       chatId = newChat.id;
     }
 
-    // optimistic user bubble
     setMessages((prev) => [...prev, { chat_id: chatId, role: "user", content: trimmed }]);
     setInput("");
 
@@ -128,7 +125,6 @@ export default function App() {
       const res = await axios.post(`/chats/${chatId}/messages`, { message: trimmed });
       const botReply = res.data.response || "";
       setMessages((prev) => [...prev, { chat_id: chatId, role: "assistant", content: botReply }]);
-      // refresh chat list timestamps
       fetchChats().catch(() => {});
     } catch (err) {
       console.error("API ERROR:", err.response?.data || err.message);
@@ -136,19 +132,33 @@ export default function App() {
     }
   }
 
-  // 🚪 Gate the UI behind auth
-  if (!session) {
-    return <AuthScreen />;
-  }
+  if (!session) return <AuthScreen />;
 
   return (
     <div className="app-wrap">
-      <aside className="sidebar">
+      {/* Top bar (mobile) */}
+      <header className="topbar">
+        <button className="icon-btn ghost" onClick={() => setSidebarOpen(true)} aria-label="Open menu">☰</button>
+        <div className="brand">
+          <div className="logo-dot" aria-hidden />
+          <span>AadeeChat</span>
+        </div>
+        <div className="topbar-actions">
+          <button className="icon-btn ghost" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle theme">🌓</button>
+        </div>
+      </header>
+
+      {/* Sidebar */}
+      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebar-header">
-          <h2>AadeeChat</h2>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={createNewChat}>+ New Chat</button>
-            <button onClick={() => supabase.auth.signOut()}>Sign out</button>
+          <div className="brand">
+            <div className="logo-dot" aria-hidden />
+            <h2>AadeeChat</h2>
+          </div>
+          <div className="sidebar-actions">
+            <button className="btn primary" onClick={createNewChat}>＋ New Chat</button>
+            <button className="btn ghost" onClick={() => supabase.auth.signOut()}>Sign out</button>
+            <button className="icon-btn ghost close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">✕</button>
           </div>
         </div>
 
@@ -159,53 +169,53 @@ export default function App() {
               className={`chat-item ${activeChatId === c.id ? "active" : ""}`}
               onClick={() => selectChat(c.id)}
               title={c.title}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === "Enter" && selectChat(c.id)}
             >
               <div className="chat-title">{c.title}</div>
-              <div className="chat-updated">
-                {c.updated_at ? new Date(c.updated_at).toLocaleDateString() : ""}{" "}
+              <div className="chat-meta">
                 {c.updated_at
-                  ? new Date(c.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                  ? new Date(c.updated_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
                   : ""}
               </div>
-
               <button
-                className="icon-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteChat(c.id);
-                }}
-                title="Delete chat"
-                aria-label={`Delete chat ${c.title}`}
-              >
-                🗑
-              </button>
+                className="icon-btn trash"
+                onClick={(e) => { e.stopPropagation(); deleteChat(c.id); }}
+                title="Delete chat" aria-label={`Delete chat ${c.title}`}
+              >🗑</button>
             </div>
           ))}
-          {!chats.length && <div className="empty">No chats yet. Click “New Chat”.</div>}
+          {!chats.length && <div className="empty">No chats yet. Tap “New Chat”.</div>}
         </div>
       </aside>
 
+      {/* Main */}
       <main className="chat-main">
         <div className="messages" ref={messagesRef}>
-          {messages
-            .filter((m) => m.role !== "system")
-            .map((m, idx) => (
-              <div key={idx} className={`bubble ${m.role === "user" ? "user" : (m.role || "assistant")}`}>
-                {m.role === "assistant" ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content || ""}</ReactMarkdown>
-                ) : (
-                  m.content
-                )}
-              </div>
-            ))}
+          {messages.filter((m) => m.role !== "system").map((m, idx) => (
+            <div key={idx} className={`bubble ${m.role === "user" ? "user" : (m.role || "assistant")}`}>
+              {m.role === "assistant"
+                ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content || ""}</ReactMarkdown>
+                : m.content}
+            </div>
+          ))}
           {!messages.length && <div className="placeholder">Say hi to start the conversation.</div>}
         </div>
 
         <form onSubmit={handleSend} className="input-form">
-          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type your message…" />
-          <button type="submit">Send</button>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type your message…"
+            aria-label="Message input"
+          />
+          <button type="submit" className="btn primary">Send</button>
         </form>
       </main>
+
+      {/* Backdrop for mobile drawer */}
+      {sidebarOpen && <div className="backdrop" onClick={() => setSidebarOpen(false)} />}
     </div>
   );
 }
