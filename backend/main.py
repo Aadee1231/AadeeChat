@@ -171,7 +171,7 @@ async def chat(request: Request):
     reply = r.output_text
     return {"response": reply}
 
-# --- Create chat (PRIVATE: ties chat to user_id)
+# --- Create chat
 @FastAPIapp.post("/chats")
 async def create_chat(request: Request, user=Depends(get_current_user)):
     data = await request.json()
@@ -193,7 +193,7 @@ async def create_chat(request: Request, user=Depends(get_current_user)):
 
     chat_res = supabase.table("chats").insert({
         "title": title,
-        "user_id": user["id"],   # <-- OWNERSHIP
+        "user_id": user["id"],  
     }).execute()
     if not chat_res.data:
         raise HTTPException(status_code=500, detail="Failed to create chat")
