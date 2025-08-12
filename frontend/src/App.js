@@ -155,11 +155,11 @@ export default function App() {
             <div className="logo-dot" aria-hidden />
             <h2>AadeeChat</h2>
           </div>
-          <div className="sidebar-actions">
-            <button className="btn primary" onClick={createNewChat}>＋ New Chat</button>
-            <button className="btn ghost" onClick={() => supabase.auth.signOut()}>Sign out</button>
+         <div className="sidebar-actions">
+            <button className="btn primary pill" onClick={createNewChat}>＋ New Chat</button>
+            <button className="btn primary pill" onClick={() => supabase.auth.signOut()}>Sign out</button>
             <button className="icon-btn ghost close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">✕</button>
-          </div>
+         </div>
         </div>
 
         <div className="chat-list">
