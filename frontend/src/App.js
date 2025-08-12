@@ -10,6 +10,18 @@ import remarkGfm from "remark-gfm";
 // set baseURL once; auth header added after login
 axios.defaults.baseURL = process.env.REACT_APP_API_URL;
 
+axios.interceptors.request.use(async (config) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch (_) {}
+  return config;
+});
+
+
 axios.interceptors.response.use(
   (res) => res,
   (err) => {
