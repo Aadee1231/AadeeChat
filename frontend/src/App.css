@@ -112,7 +112,7 @@ html[data-theme="light"] {
 .chat-title { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chat-meta { font-size:12px; color: var(--muted); margin-right: 4px; }
 .chat-item .trash {
-  position:absolute; right:10px; top:50%;
+  position:absolute; right:5px; top:50%;
   transform: translateY(-50%);
   width: 28px; height: 28px;             /* smaller */
   font-size: 14px;                        /* smaller emoji size */
@@ -210,7 +210,18 @@ html[data-theme="light"] {
   border: none;
 }
 /* uniform pill buttons */
-.btn.pill { height: 38px; padding: 0 14px; border-radius: 999px; }
+.btn.pill {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  min-width: 120px;       /* ensures equal width for New Chat & Sign out */
+  display: inline-flex;   /* centers text nicely */
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;    /* stops wrapping onto 2 lines */
+  gap: 6px;               /* space between icon/text if you add icons */
+}
+
 /* blue highlight on hover/focus */
 .btn.primary:hover,
 .btn.primary:focus-visible {
